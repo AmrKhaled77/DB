@@ -1,0 +1,22 @@
+F:\super market\bin\Debug\net8.0\super market.exe
+F:\super market\bin\Debug\net8.0\super market.deps.json
+F:\super market\bin\Debug\net8.0\super market.runtimeconfig.json
+F:\super market\bin\Debug\net8.0\super market.dll
+F:\super market\bin\Debug\net8.0\super market.pdb
+F:\super market\bin\Debug\net8.0\System.Data.SqlClient.dll
+F:\super market\bin\Debug\net8.0\runtimes\win-arm64\native\sni.dll
+F:\super market\bin\Debug\net8.0\runtimes\win-x64\native\sni.dll
+F:\super market\bin\Debug\net8.0\runtimes\win-x86\native\sni.dll
+F:\super market\bin\Debug\net8.0\runtimes\unix\lib\net8.0\System.Data.SqlClient.dll
+F:\super market\bin\Debug\net8.0\runtimes\win\lib\net8.0\System.Data.SqlClient.dll
+F:\super market\obj\Debug\net8.0\super market.csproj.AssemblyReference.cache
+F:\super market\obj\Debug\net8.0\super market.GeneratedMSBuildEditorConfig.editorconfig
+F:\super market\obj\Debug\net8.0\super market.AssemblyInfoInputs.cache
+F:\super market\obj\Debug\net8.0\super market.AssemblyInfo.cs
+F:\super market\obj\Debug\net8.0\super market.csproj.CoreCompileInputs.cache
+F:\super market\obj\Debug\net8.0\super ma.0D46E682.Up2Date
+F:\super market\obj\Debug\net8.0\super market.dll
+F:\super market\obj\Debug\net8.0\refint\super market.dll
+F:\super market\obj\Debug\net8.0\super market.pdb
+F:\super market\obj\Debug\net8.0\super market.genruntimeconfig.cache
+F:\super market\obj\Debug\net8.0\ref\super market.dll
