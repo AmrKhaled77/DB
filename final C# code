@@ -5,7 +5,6 @@ class Program
 {
     static string connectionString = "Server=.;Database=SuperMarketSystem;Trusted_Connection=True;";
 
-    // Store logged-in user's ID globally for session
     static int LoggedInUserId = -1;
 
     static void Main(string[] args)
@@ -71,18 +70,18 @@ class Program
 
             try
             {
-                // Insert into UserAccount
+                
                 string query = "INSERT INTO UserAccount (FullName, Email, Password, User_Type) " +
                                "OUTPUT INSERTED.User_ID VALUES (@FullName, @Email, @Password, @UserType)";
                 SqlCommand cmd = new SqlCommand(query, con, transaction);
                 cmd.Parameters.AddWithValue("@FullName", fullName);
                 cmd.Parameters.AddWithValue("@Email", email);
-                cmd.Parameters.AddWithValue("@Password", password); // Replace with hashed password if needed
+                cmd.Parameters.AddWithValue("@Password", password); 
                 cmd.Parameters.AddWithValue("@UserType", userType);
 
                 int userId = (int)cmd.ExecuteScalar();
 
-                // Insert into respective table
+                
                 if (userType == "admin")
                 {
                     string insertAdmin = "INSERT INTO Admin (User_ID, Name, Phone) VALUES (@UserID, @Name, NULL)";
@@ -143,10 +142,9 @@ class Program
                 string fullName = reader["FullName"].ToString();
                 string userType = reader["User_Type"].ToString();
 
-                // Update visit count and last visit datetime for Customers only
                 if (userType == "user")
                 {
-                    reader.Close(); // Close reader before running another command on same connection
+                    reader.Close(); 
 
                     string updateVisitQuery = @"
                         UPDATE Customer 
@@ -171,7 +169,7 @@ class Program
 
                 ShowUserDashboard(LoggedInUserId);
 
-                LoggedInUserId = -1; // reset on logout
+                LoggedInUserId = -1; 
             }
             else
             {
@@ -200,7 +198,13 @@ class Program
             Console.WriteLine("11. Show All Users");
             Console.WriteLine("12. Show All Orders with Details");
             Console.WriteLine("13. Show All Invoices");
-            Console.WriteLine("14. Logout");
+            Console.WriteLine("14. show most bought product?");
+            Console.WriteLine("15. Show product that has no customers");
+            Console.WriteLine("16. Show Who was the customer that did not buy any product since one year");
+            Console.WriteLine("17. Show Who was the customer that made the highest purchase this month?");
+            Console.WriteLine("18. Show IS the supermarket selling electric appliances more or food\r\nproducts more?");
+            Console.WriteLine("19. Show For each product, retrieve all its information and the number of\r\ncustomers who bought it.");
+            Console.WriteLine("20. Logout");
             Console.Write("Choose an option: ");
             string choice = Console.ReadLine();
 
@@ -219,12 +223,326 @@ class Program
                 case "11": ShowAllUsers(); break;
                 case "12": ShowAllOrdersWithDetails(); break;
                 case "13": ShowAllInvoices(); break;
+                case "14": PrintTopProductByCustomerCount(connectionString); break;
+                case "15": PrintProductsNeverBoughtInMonth(connectionString); break;
+                case "16": PrintCustomersNoPurchaseLastYear(connectionString); break;
+                case "17": PrintTopCustomerThisMonth(connectionString); break;
+                case "18": PrintCategorySalesComparison(connectionString); break;
+                case "19": PrintProductsWithCustomerCounts(connectionString); break;
 
-                case "14": return;
+                case "20": return;
                 default: Console.WriteLine("Invalid choice."); break;
             }
         }
     }
+
+    static void PrintTopProductByCustomerCount(string connectionString)
+    {
+        string query = @"
+            SELECT TOP 1 
+                p.Product_ID,
+                p.Name,
+                COUNT(DISTINCT o.Customer_ID) AS NumCustomers
+            FROM Product p
+            JOIN OrderDetails od ON p.Product_ID = od.Product_ID
+            JOIN Orders o ON od.Order_ID = o.Order_ID
+            GROUP BY p.Product_ID, p.Name
+            ORDER BY NumCustomers DESC;
+        ";
+
+        using (SqlConnection conn = new SqlConnection(connectionString))
+        {
+            SqlCommand cmd = new SqlCommand(query, conn);
+
+            try
+            {
+                conn.Open();
+
+                using (SqlDataReader reader = cmd.ExecuteReader())
+                {
+                    if (reader.Read())
+                    {
+                        int productId = reader.GetInt32(reader.GetOrdinal("Product_ID"));
+                        string name = reader.GetString(reader.GetOrdinal("Name"));
+                        int numCustomers = reader.GetInt32(reader.GetOrdinal("NumCustomers"));
+
+                        Console.WriteLine($"Product ID: {productId}");
+                        Console.WriteLine($"Name: {name}");
+                        Console.WriteLine($"Number of Customers: {numCustomers}");
+                    }
+                    else
+                    {
+                        Console.WriteLine("No data found.");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("Error occurred: " + ex.Message);
+            }
+        }
+    }
+
+    static void PrintProductsNeverBoughtInMonth(string connectionString)
+    {
+        Console.Write("Enter the year (e.g., 2025): ");
+        if (!int.TryParse(Console.ReadLine(), out int year) || year < 1)
+        {
+            Console.WriteLine("Invalid year input.");
+            return;
+        }
+
+        Console.Write("Enter the month (1-12): ");
+        if (!int.TryParse(Console.ReadLine(), out int month) || month < 1 || month > 12)
+        {
+            Console.WriteLine("Invalid month input.");
+            return;
+        }
+
+        string query = @"
+            SELECT 
+                p.Product_ID,
+                p.Name
+            FROM Product p
+            WHERE p.Product_ID NOT IN (
+                SELECT DISTINCT od.Product_ID
+                FROM OrderDetails od
+                JOIN Orders o ON od.Order_ID = o.Order_ID
+                WHERE YEAR(o.OrderDate) = @Year
+                  AND MONTH(o.OrderDate) = @Month
+            );
+        ";
+
+        using (SqlConnection conn = new SqlConnection(connectionString))
+        using (SqlCommand cmd = new SqlCommand(query, conn))
+        {
+            cmd.Parameters.AddWithValue("@Year", year);
+            cmd.Parameters.AddWithValue("@Month", month);
+
+            try
+            {
+                conn.Open();
+                using (SqlDataReader reader = cmd.ExecuteReader())
+                {
+                    if (!reader.HasRows)
+                    {
+                        Console.WriteLine($"All products have been bought at least once in {month}/{year}.");
+                        return;
+                    }
+
+                    Console.WriteLine($"Products never bought in {month}/{year}:");
+                    while (reader.Read())
+                    {
+                        int productId = reader.GetInt32(reader.GetOrdinal("Product_ID"));
+                        string name = reader.GetString(reader.GetOrdinal("Name"));
+                        Console.WriteLine($"Product ID: {productId}, Name: {name}");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("Error: " + ex.Message);
+            }
+        }
+    }
+
+
+    static void PrintCustomersNoPurchaseLastYear(string connectionString)
+    {
+        string query = @"
+            SELECT c.Customer_ID, c.Name, c.Last_Visited
+FROM Customer c
+WHERE c.Last_Visited < DATEADD(YEAR, -1, GETDATE())
+   OR c.Last_Visited IS NULL;
+        ";
+
+        using (SqlConnection conn = new SqlConnection(connectionString))
+        using (SqlCommand cmd = new SqlCommand(query, conn))
+        {
+            try
+            {
+                conn.Open();
+                using (SqlDataReader reader = cmd.ExecuteReader())
+                {
+                    if (!reader.HasRows)
+                    {
+                        Console.WriteLine("All customers have purchased products in the last year.");
+                        return;
+                    }
+
+                    Console.WriteLine("Customers who did not buy any product in the last year:");
+                    while (reader.Read())
+                    {
+                        int customerId = reader.GetInt32(reader.GetOrdinal("Customer_ID"));
+                        string name = reader.GetString(reader.GetOrdinal("Name"));
+                        Console.WriteLine($"Customer ID: {customerId}, Name: {name}");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("Error: " + ex.Message);
+            }
+        }
+    }
+
+
+    static void PrintTopCustomerThisMonth(string connectionString)
+    {
+        string query = @"
+            SELECT TOP 1 
+                c.Customer_ID,
+                c.Name,
+                SUM(i.FinalAmount) AS TotalSpent
+            FROM Invoice i
+            JOIN Orders o ON i.Order_ID = o.Order_ID
+            JOIN Customer c ON o.Customer_ID = c.Customer_ID
+            WHERE MONTH(i.InvoiceDate) = MONTH(GETDATE()) AND YEAR(i.InvoiceDate) = YEAR(GETDATE())
+            GROUP BY c.Customer_ID, c.Name
+            ORDER BY TotalSpent DESC;
+        ";
+
+        using (SqlConnection conn = new SqlConnection(connectionString))
+        using (SqlCommand cmd = new SqlCommand(query, conn))
+        {
+            try
+            {
+                conn.Open();
+
+                using (SqlDataReader reader = cmd.ExecuteReader())
+                {
+                    if (reader.Read())
+                    {
+                        int customerId = reader.GetInt32(reader.GetOrdinal("Customer_ID"));
+                        string name = reader.GetString(reader.GetOrdinal("Name"));
+                        decimal totalSpent = reader.GetDecimal(reader.GetOrdinal("TotalSpent"));
+
+                        Console.WriteLine("Top customer this month:");
+                        Console.WriteLine($"Customer ID: {customerId}");
+                        Console.WriteLine($"Name: {name}");
+                        Console.WriteLine($"Total Purchase: {totalSpent:C}");
+                    }
+                    else
+                    {
+                        Console.WriteLine("No purchases found this month.");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("Error: " + ex.Message);
+            }
+        }
+    }
+
+   
+
+
+
+    static void PrintCategorySalesComparison(string connectionString)
+    {
+        string query = @"
+        SELECT
+            p.Type,
+            SUM(od.Quantity) AS TotalQuantitySold
+        FROM OrderDetails od
+        JOIN Product p ON od.Product_ID = p.Product_ID
+        WHERE p.Type IN ('Electric', 'Food')
+        GROUP BY p.Type
+        ORDER BY TotalQuantitySold DESC;
+    ";
+
+        using (SqlConnection conn = new SqlConnection(connectionString))
+        using (SqlCommand cmd = new SqlCommand(query, conn))
+        {
+            try
+            {
+                conn.Open();
+
+                using (SqlDataReader reader = cmd.ExecuteReader())
+                {
+                    Console.WriteLine("Sales comparison between Electric Appliances and Food Products:");
+                    while (reader.Read())
+                    {
+                        string type = reader.GetString(reader.GetOrdinal("Type"));
+                        int totalQuantity = reader.GetInt32(reader.GetOrdinal("TotalQuantitySold"));
+
+                        Console.WriteLine($"Category: {type}");
+                        Console.WriteLine($"Total Quantity Sold: {totalQuantity}");
+                        Console.WriteLine(new string('-', 30));
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("Error: " + ex.Message);
+            }
+        }
+    }
+
+
+
+
+
+    static void PrintProductsWithCustomerCounts(string connectionString)
+    {
+        string query = @"
+        SELECT 
+            p.Product_ID,
+            p.Name,
+            p.Type,
+            p.Price,
+            p.Total_Sales,
+            p.Monthly_Sales,
+            p.Quantity,
+            COUNT(DISTINCT o.Customer_ID) AS CustomerCount
+        FROM Product p
+        LEFT JOIN OrderDetails od ON p.Product_ID = od.Product_ID
+        LEFT JOIN Orders o ON od.Order_ID = o.Order_ID
+        GROUP BY 
+            p.Product_ID, p.Name, p.Type, p.Price, p.Total_Sales, p.Monthly_Sales, p.Quantity;
+    ";
+
+        using (SqlConnection conn = new SqlConnection(connectionString))
+        using (SqlCommand cmd = new SqlCommand(query, conn))
+        {
+            try
+            {
+                conn.Open();
+                using (SqlDataReader reader = cmd.ExecuteReader())
+                {
+                    Console.WriteLine("Product details and number of customers who bought it:");
+
+                    while (reader.Read())
+                    {
+                        int productId = reader.GetInt32(reader.GetOrdinal("Product_ID"));
+                        string name = reader.GetString(reader.GetOrdinal("Name"));
+                        string type = reader.GetString(reader.GetOrdinal("Type"));
+                        decimal price = reader.GetDecimal(reader.GetOrdinal("Price"));
+                        int totalSales = reader.GetInt32(reader.GetOrdinal("Total_Sales"));
+                        int monthlySales = reader.GetInt32(reader.GetOrdinal("Monthly_Sales"));
+                        int quantity = reader.GetInt32(reader.GetOrdinal("Quantity"));
+                        int customerCount = reader.GetInt32(reader.GetOrdinal("CustomerCount"));
+
+                        Console.WriteLine($"ID: {productId}");
+                        Console.WriteLine($"Name: {name}");
+                        Console.WriteLine($"Type: {type}");
+                        Console.WriteLine($"Price: {price:C}");
+                        Console.WriteLine($"Total Sales: {totalSales}");
+                        Console.WriteLine($"Monthly Sales: {monthlySales}");
+                        Console.WriteLine($"Quantity: {quantity}");
+                        Console.WriteLine($"Number of Customers: {customerCount}");
+                        Console.WriteLine(new string('-', 40));
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("Error: " + ex.Message);
+            }
+        }
+    }
+
 
 
 
@@ -239,8 +557,8 @@ class Program
             Console.WriteLine("2. Update My Data");
             Console.WriteLine("3. Remove My Account"); 
             Console.WriteLine("4. make order");
-            Console.WriteLine("4. show my orders ");
-            Console.WriteLine("5. Logout");
+            Console.WriteLine("5. show my orders ");
+            Console.WriteLine("6. Logout");
             Console.Write("Choose an option: ");
             string choice = Console.ReadLine();
 
@@ -352,7 +670,7 @@ class Program
     {
         Console.WriteLine("\n--- Update Your Data ---");
 
-        // First, let's fetch current UserAccount data
+        
         string currentFullName = null;
         string currentEmail = null;
 
@@ -397,7 +715,7 @@ class Program
         {
             con.Open();
 
-            // Get current Customer data first
+            
             string selectCustomerQuery = "SELECT Name, Address, Phone FROM Customer WHERE User_ID = @UserID";
             SqlCommand selectCustCmd = new SqlCommand(selectCustomerQuery, con);
             selectCustCmd.Parameters.AddWithValue("@UserID", LoggedInUserId);
@@ -408,7 +726,7 @@ class Program
             {
                 if (reader.Read())
                 {
-                    // Name comes from UserAccount, so no need here
+                   
                     currentAddress = reader["Address"] as string;
                     currentPhone = reader["Phone"] as string;
                 }
@@ -422,12 +740,12 @@ class Program
             if (string.IsNullOrEmpty(newAddress)) newAddress = currentAddress;
             if (string.IsNullOrEmpty(newPhone)) newPhone = currentPhone;
 
-            // Begin transaction to update both tables atomically
+            
             SqlTransaction transaction = con.BeginTransaction();
 
             try
             {
-                // Update UserAccount
+                
                 string updateUserQuery = "UPDATE UserAccount SET FullName = @FullName, Email = @Email WHERE User_ID = @UserID";
                 SqlCommand updateUserCmd = new SqlCommand(updateUserQuery, con, transaction);
                 updateUserCmd.Parameters.AddWithValue("@FullName", newName);
@@ -435,7 +753,7 @@ class Program
                 updateUserCmd.Parameters.AddWithValue("@UserID", LoggedInUserId);
                 updateUserCmd.ExecuteNonQuery();
 
-                // Update Customer
+                
                 string updateCustomerQuery = "UPDATE Customer SET Name = @Name, Address = @Address, Phone = @Phone WHERE User_ID = @UserID";
                 SqlCommand updateCustomerCmd = new SqlCommand(updateCustomerQuery, con, transaction);
                 updateCustomerCmd.Parameters.AddWithValue("@Name", newName);
@@ -474,19 +792,18 @@ class Program
 
             try
             {
-                // Delete from Customer
                 string deleteCustomer = "DELETE FROM Customer WHERE User_ID = @UserID";
                 SqlCommand delCustCmd = new SqlCommand(deleteCustomer, con, transaction);
                 delCustCmd.Parameters.AddWithValue("@UserID", LoggedInUserId);
                 delCustCmd.ExecuteNonQuery();
 
-                // Delete from Admin (if exists)
+                
                 string deleteAdmin = "DELETE FROM Admin WHERE User_ID = @UserID";
                 SqlCommand delAdminCmd = new SqlCommand(deleteAdmin, con, transaction);
                 delAdminCmd.Parameters.AddWithValue("@UserID", LoggedInUserId);
                 delAdminCmd.ExecuteNonQuery();
 
-                // Finally delete UserAccount
+               
                 string deleteUser = "DELETE FROM UserAccount WHERE User_ID = @UserID";
                 SqlCommand delUserCmd = new SqlCommand(deleteUser, con, transaction);
                 delUserCmd.Parameters.AddWithValue("@UserID", LoggedInUserId);
@@ -495,7 +812,7 @@ class Program
                 transaction.Commit();
 
                 Console.WriteLine("Your account was deleted successfully.");
-                return true; // Indicate logout needed
+                return true; 
             }
             catch (Exception ex)
             {
@@ -526,14 +843,13 @@ class Program
                 return;
             }
 
-            // Step 2: Ask for product ID and quantity
+            
             Console.Write("Enter Product ID: ");
             int productId = int.Parse(Console.ReadLine());
 
             Console.Write("Enter Quantity: ");
             int quantityRequested = int.Parse(Console.ReadLine());
 
-            // Step 3: Check product availability
             string checkProductQuery = "SELECT Quantity, Price FROM Product WHERE Product_ID = @ProductID";
             SqlCommand checkProductCmd = new SqlCommand(checkProductQuery, con);
             checkProductCmd.Parameters.AddWithValue("@ProductID", productId);
@@ -556,13 +872,13 @@ class Program
                 return;
             }
 
-            // Step 4: Insert into Orders
+            
             string insertOrderQuery = "INSERT INTO Orders (Customer_ID, OrderDate) OUTPUT INSERTED.Order_ID VALUES (@CustomerID, GETDATE())";
             SqlCommand insertOrderCmd = new SqlCommand(insertOrderQuery, con);
             insertOrderCmd.Parameters.AddWithValue("@CustomerID", customerId);
             int orderId = (int)insertOrderCmd.ExecuteScalar();
 
-            // Step 5: Insert into OrderDetails
+            
             string insertDetailsQuery = "INSERT INTO OrderDetails (Order_ID, Product_ID, Quantity) VALUES (@OrderID, @ProductID, @Quantity)";
             SqlCommand insertDetailsCmd = new SqlCommand(insertDetailsQuery, con);
             insertDetailsCmd.Parameters.AddWithValue("@OrderID", orderId);
@@ -570,15 +886,15 @@ class Program
             insertDetailsCmd.Parameters.AddWithValue("@Quantity", quantityRequested);
             insertDetailsCmd.ExecuteNonQuery();
 
-            // Step 6: Update product quantity
+            
             string updateQtyQuery = "UPDATE Product SET Quantity = Quantity - @OrderedQty WHERE Product_ID = @ProductID";
             SqlCommand updateQtyCmd = new SqlCommand(updateQtyQuery, con);
             updateQtyCmd.Parameters.AddWithValue("@OrderedQty", quantityRequested);
             updateQtyCmd.Parameters.AddWithValue("@ProductID", productId);
             updateQtyCmd.ExecuteNonQuery();
 
-            // Step 7: Create invoice
-            decimal taxRate = 0.10M;
+            
+            decimal taxRate = 0.14M;
             decimal subtotal = price * quantityRequested;
             decimal tax = subtotal * taxRate;
             decimal finalAmount = subtotal + tax;
@@ -592,8 +908,8 @@ class Program
             insertInvoiceCmd.Parameters.AddWithValue("@FinalAmount", finalAmount);
             insertInvoiceCmd.ExecuteNonQuery();
 
-            Console.WriteLine("✅ Order placed successfully!");
-            Console.WriteLine($"🧾 Final Amount (including tax): {finalAmount:C}");
+            Console.WriteLine(" Order placed successfully!");
+            Console.WriteLine($" Final Amount (including tax): {finalAmount:C}");
         }
     }
 
@@ -604,7 +920,7 @@ class Program
         {
             con.Open();
 
-            // Step 1: Get Customer_ID for the logged-in user
+            
             string getCustomerIdQuery = "SELECT Customer_ID FROM Customer WHERE User_ID = @UserID";
             SqlCommand getCustomerCmd = new SqlCommand(getCustomerIdQuery, con);
             getCustomerCmd.Parameters.AddWithValue("@UserID", LoggedInUserId);
@@ -617,7 +933,7 @@ class Program
                 return;
             }
 
-            // Step 2: Get Orders with Product Details
+            
             string ordersQuery = @"
             SELECT o.Order_ID, o.OrderDate, 
                    p.Name AS ProductName, od.Quantity AS ProductQuantity
@@ -650,7 +966,49 @@ class Program
 
     //ADMIN FUNCTIONS
 
+    static void AdminSignUpCustomer()
+    {
+        Console.Clear();
+        Console.WriteLine("=== Admin: Sign Up Customer ===");
+        Console.Write("Full Name: ");
+        string fullName = Console.ReadLine();
+        Console.Write("Email: ");
+        string email = Console.ReadLine();
+        Console.Write("Password: ");
+        string password = Console.ReadLine();
 
+        using (SqlConnection con = new SqlConnection(connectionString))
+        {
+            con.Open();
+            SqlTransaction transaction = con.BeginTransaction();
+            try
+            {
+                string query = "INSERT INTO UserAccount (FullName, Email, Password, User_Type) " +
+                               "OUTPUT INSERTED.User_ID VALUES (@FullName, @Email, @Password, 'user')";
+                SqlCommand cmd = new SqlCommand(query, con, transaction);
+                cmd.Parameters.AddWithValue("@FullName", fullName);
+                cmd.Parameters.AddWithValue("@Email", email);
+                cmd.Parameters.AddWithValue("@Password", password);
+
+                int userId = (int)cmd.ExecuteScalar();
+
+                string insertCustomer = "INSERT INTO Customer (User_ID, Name, Address, Phone, No_Visits, Last_Visited) " +
+                                        "VALUES (@UserID, @Name, NULL, NULL, 0, NULL)";
+                SqlCommand customerCmd = new SqlCommand(insertCustomer, con, transaction);
+                customerCmd.Parameters.AddWithValue("@UserID", userId);
+                customerCmd.Parameters.AddWithValue("@Name", fullName);
+                customerCmd.ExecuteNonQuery();
+
+                transaction.Commit();
+                Console.WriteLine("Customer account created successfully.");
+            }
+            catch (Exception ex)
+            {
+                transaction.Rollback();
+                Console.WriteLine("Error: " + ex.Message);
+            }
+        }
+    }
 
     static void ShowAllUsers()
     {
@@ -765,49 +1123,7 @@ class Program
     }
 
 
-    static void AdminSignUpCustomer()
-    {
-        Console.Clear();
-        Console.WriteLine("=== Admin: Sign Up Customer ===");
-        Console.Write("Full Name: ");
-        string fullName = Console.ReadLine();
-        Console.Write("Email: ");
-        string email = Console.ReadLine();
-        Console.Write("Password: ");
-        string password = Console.ReadLine();
-
-        using (SqlConnection con = new SqlConnection(connectionString))
-        {
-            con.Open();
-            SqlTransaction transaction = con.BeginTransaction();
-            try
-            {
-                string query = "INSERT INTO UserAccount (FullName, Email, Password, User_Type) " +
-                               "OUTPUT INSERTED.User_ID VALUES (@FullName, @Email, @Password, 'user')";
-                SqlCommand cmd = new SqlCommand(query, con, transaction);
-                cmd.Parameters.AddWithValue("@FullName", fullName);
-                cmd.Parameters.AddWithValue("@Email", email);
-                cmd.Parameters.AddWithValue("@Password", password);
-
-                int userId = (int)cmd.ExecuteScalar();
-
-                string insertCustomer = "INSERT INTO Customer (User_ID, Name, Address, Phone, No_Visits, Last_Visited) " +
-                                        "VALUES (@UserID, @Name, NULL, NULL, 0, NULL)";
-                SqlCommand customerCmd = new SqlCommand(insertCustomer, con, transaction);
-                customerCmd.Parameters.AddWithValue("@UserID", userId);
-                customerCmd.Parameters.AddWithValue("@Name", fullName);
-                customerCmd.ExecuteNonQuery();
-
-                transaction.Commit();
-                Console.WriteLine("Customer account created successfully.");
-            }
-            catch (Exception ex)
-            {
-                transaction.Rollback();
-                Console.WriteLine("Error: " + ex.Message);
-            }
-        }
-    }
+    
 
 
 
@@ -1001,7 +1317,7 @@ class Program
 
     static void ShowFrequentCustomers()
     {
-        Console.Write("Enter minimum visit count (e.g., 10): ");
+        Console.Write("Enter minimum visit count : ");
         if (!int.TryParse(Console.ReadLine(), out int minVisits)) return;
 
         using (SqlConnection con = new SqlConnection(connectionString))
